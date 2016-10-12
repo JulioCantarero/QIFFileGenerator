@@ -10,6 +10,7 @@ v0.1:   Program TK to select files of all files in folder if Cancel pressed
 
 from datetime import *
 from dateutil.parser import parse
+import locale
 
 from tkinter import *
 from tkinter import ttk
@@ -58,7 +59,7 @@ def parse_HTML_table_row_for_a_transaction(row, columns):
                 except ValueError:
                     print('The Cell contents "' + cell_contents + '" could not be parsed as a date')
             elif index == columns['amount']:
-                transaction[1] = cell_contents
+                transaction[1] = locale.atof(cell_contents)
                 #ValueError: could not convert string to float: 'Importe EUR'
             elif index == columns['description']:
                 transaction[2] = cell_contents
@@ -94,6 +95,8 @@ $$$amount
 accounts_names = ["Activo:Activo Circulante:COINC (Bankinter):Cuenta Corriente", "Pasivo:Tarjetas de Crédito:Santander Visa Cuenta Comun"]
 accounts_types = ["Bank", "CCard"]
 accounts_transactions = []
+
+locale.setlocale(locale.LC_ALL, '')         # Used in locale to use the default locale, as returned in locale.getdefaultlocale()
 
 root = Tk()
 root.withdraw() #use to hide tkinter window
