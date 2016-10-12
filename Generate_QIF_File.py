@@ -10,6 +10,7 @@ v0.1:   Program TK to select files of all files in folder if Cancel pressed
 
 from datetime import *
 from dateutil.parser import parse
+
 from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog 
@@ -17,6 +18,55 @@ import os
 import re
 from string import Template
 import bs4
+
+def search_bank_account_number():
+    pass
+
+def parse_HTML_table_row_for_header(row):
+    """Check the cells (<td>) objects in the Table row and find the columns where the transaction components are"""    
+    
+    date_header = re.compile('fecha', re.I)
+    amount_header = re.compile('importe', re.I)
+    description_header = re.compile('concepto', re.I)
+    transaction_columns = {}
+    cells = row.find_all('td')
+    for index, table_cell in enumerate(cells):
+        if table_cell.string:
+            cell_contents = table_cell.string.strip(' \t')
+            if date_header.match(cell_contents):
+                transaction_columns['date'] = index
+            elif amount_header.match(cell_contents):
+                transaction_columns['amount'] = index
+            elif description_header.match(cell_contents):
+                transaction_columns['description'] = index
+    if len(transaction_columns) == 3:
+        return transaction_columns
+    else:
+        return False
+
+def parse_HTML_table_row_for_a_transaction(row, columns):
+    """Extract the transaction components from the columns indicated"""
+
+    cells = row.find_all('td')
+    transaction = ['','','', False]    # I will record every transaction in an array like [Date, Amount, Description, PeerAccount/SplitTransactions]
+    for index, table_cell in enumerate(cells):
+        if table_cell.string:
+            cell_contents = table_cell.string.strip(' \t')
+            if index == columns['date']:
+                try:
+                    transaction[0] = parse(cell_contents, dayfirst = True)
+                except ValueError:
+                    print('The Cell contents "' + cell_contents + '" could not be parsed as a date')
+            elif index == columns['amount']:
+                transaction[1] = cell_contents
+                #ValueError: could not convert string to float: 'Importe EUR'
+            elif index == columns['description']:
+                transaction[2] = cell_contents
+    if isinstance(transaction[0], datetime):
+        return transaction
+    else:
+        return False
+
 
 qifAccountHdrTemplate = Template("""\
 !Account
@@ -43,20 +93,12 @@ $$$amount
 
 accounts_names = ["Activo:Activo Circulante:COINC (Bankinter):Cuenta Corriente", "Pasivo:Tarjetas de Crédito:Santander Visa Cuenta Comun"]
 accounts_types = ["Bank", "CCard"]
-accounts_transactions = [ [ ["2016/05/15","26,56", "Liquidación intereses  al 0,80 %  realizado por COINC", 
-                                     [ ["Gastos:Impuestos:IRPF", "IMPUESTO Retención por Intereses del IRPF (19,0%)", "-6,22"],
-                                       ["Ingresos:Intereses:Cuentas", "Intereses Brutos AL 0,80%", "32,78" ]
-                                     ]
-                            ],
-                            [ "2016/06/30", "-111,1", "Prueba Ñoquis", False]
-                          ]
-                        ]
-date_column = 0
-amount_column = 2
-description_column = 3
+accounts_transactions = []
 
 root = Tk()
 root.withdraw() #use to hide tkinter window
+
+#Import list of Account Names and types from the original GNUCAsh file
 
 currdir = r"D:\Test\QIF" 
 filenames = filedialog.askopenfilename(filetypes = (("All Files","*.*"), ("Excel Files", ("*.xls","*.xlsx"))), 
@@ -70,32 +112,31 @@ if not filenames:
     
 
 for file_to_process in filenames:
+    
+    # Determine the type of file selected from the allowed types: Excel(HTML), Excel, PDF, HTML?, others?
+    
+    # If Excel(HTML) or HTML? parse with Beautiful Soup
     soup = bs4.BeautifulSoup(open(file_to_process.replace('/','\\')), 'html.parser')
+    
+    # For each file, identify which account the file corresponds to. Search for the CCC    
+    
     transactions_table = []
-    tables = soup.findAll("table")
+    tables = soup.find_all("table")
     for table in tables:
-        rows = table.findAll('tr')
+        rows = table.find_all('tr')
+        header_already_parsed = False
         for row in rows:
-            cells = row.findAll('td')
-            transaction = ['','','', False]
-            for index, table_cell in enumerate(cells):
-                if table_cell.string:
-                    cell_contents = table_cell.string.strip(' \t')
-                    if index == date_column:
-                        try:
-                            transaction[0] = parse(cell_contents, dayfirst = True)
-                        except ValueError:
-                            print('The Cell contents "' + cell_contents + '" could not be parsed as a date')
-                    elif index == amount_column:
-                        transaction[1] = cell_contents
-                    elif index == description_column:
-                        transaction[2] = cell_contents
-            if isinstance(transaction[0], datetime):
-                transactions_table.append(transaction)
-print(transactions_table)
-accounts_transactions[0] = transactions_table
-
-#Import list of Account Names and types from the original GNUCAsh file
+            if not header_already_parsed:
+                columns = parse_HTML_table_row_for_header(row)
+                if columns:
+                    header_already_parsed = True
+            else:
+                transaction = parse_HTML_table_row_for_a_transaction(row, columns)
+                if transaction:
+                    transactions_table.append(transaction)
+                    
+    print(transactions_table)
+    accounts_transactions.append(transactions_table)
 
 amount_format_regex = r'([-]?\d+(?:\.\d{3})*(?:\,\d+)*)'
 date_format_regex = r'(\d{1,2})[-\s\/](\d{1,2})[-\s\/](\d{2,4})'
