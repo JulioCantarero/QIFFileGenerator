@@ -20,8 +20,28 @@ import re
 from string import Template
 import bs4
 
-def search_bank_account_number():
-    pass
+#donde las variables de entrada son strings de 4, 4 y 10 caracteres respectivamente
+def digitos_control(entidad, oficina, cuenta):
+    def proc(digitos):
+        if not digitos.isdigit() or len(digitos) != 10:
+            raise ValueError('Debe ser número de 10 digitos: %s' % digitos)
+        factores = [1, 2, 4, 8, 5, 10, 9, 7, 3, 6]
+        resultado = 11 - sum(int(d)*f for d,f in zip(digitos, factores)) % 11
+        if resultado == 10:  return 1
+        if resultado == 11:  return 0
+        return resultado
+    return '%d%d' % (proc('00'+entidad+oficina), proc(cuenta))
+    
+def search_bank_account_number(file_text):
+    """Search all the file for a sequence of 20 digits and check the DC field"""
+
+    bank_account_format_in_spain = re.compile('\d{4}[ -]?\d{4}[ -]?\d{2,4}[ -]?\d{4,6}[ -]?\d{4}')
+    account_code = bank_account_format_in_spain.search(file_text)
+    if account_code:
+        code_no_spaces = account_code.group(0).replace(' ','').replace('-','')
+        if len(code_no_spaces) == 20:
+            if digitos_control(code_no_spaces[0:4],code_no_spaces[4:8],code_no_spaces[10:]) == code_no_spaces[8:10]:
+                return code_no_spaces
 
 def parse_HTML_table_row_for_header(row):
     """Check the cells (<td>) objects in the Table row and find the columns where the transaction components are"""    
@@ -34,11 +54,11 @@ def parse_HTML_table_row_for_header(row):
     for index, table_cell in enumerate(cells):
         if table_cell.string:
             cell_contents = table_cell.string.strip(' \t')
-            if date_header.match(cell_contents):
+            if date_header.search(cell_contents):
                 transaction_columns['date'] = index
-            elif amount_header.match(cell_contents):
+            elif amount_header.search(cell_contents):
                 transaction_columns['amount'] = index
-            elif description_header.match(cell_contents):
+            elif description_header.search(cell_contents):
                 transaction_columns['description'] = index
     if len(transaction_columns) == 3:
         return transaction_columns
@@ -122,6 +142,8 @@ for file_to_process in filenames:
     soup = bs4.BeautifulSoup(open(file_to_process.replace('/','\\')), 'html.parser')
     
     # For each file, identify which account the file corresponds to. Search for the CCC    
+    file_plain_text = soup.get_text()
+    print(search_bank_account_number(file_plain_text))
     
     transactions_table = []
     tables = soup.find_all("table")
@@ -141,10 +163,6 @@ for file_to_process in filenames:
     print(transactions_table)
     accounts_transactions.append(transactions_table)
 
-amount_format_regex = r'([-]?\d+(?:\.\d{3})*(?:\,\d+)*)'
-date_format_regex = r'(\d{1,2})[-\s\/](\d{1,2})[-\s\/](\d{2,4})'
-
-    
 output_file = open('FileToImport.qif', 'w')
 
 for account, category, transactions in zip(accounts_names, accounts_types, accounts_transactions):
