@@ -8,6 +8,8 @@ v0.1:   Program TK to select files of all files in folder if Cancel pressed
         Program export to QIF from intermdiate List structs        
 """
 
+from datetime import *
+from dateutil.parser import parse
 from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog 
@@ -47,10 +49,6 @@ accounts_transactions = [ [ ["2016/05/15","26,56", "Liquidación intereses  al 0
                                      ]
                             ],
                             [ "2016/06/30", "-111,1", "Prueba Ñoquis", False]
-                          ],
-                          [  [ "2016/06/16", "-7,8", "Movimiento de Pilar - PKLAPAZ", False ], 
-                             [ "2016/06/18", "-83,1", "Movimiento de Pilar - PROMOCIONESFARMA", False],
-                             [ "2016/06/28", "-22", "Otra prueba", "Gastos:Contra Cuenta"]
                           ]
                         ]
 date_column = 0
@@ -81,15 +79,21 @@ for file_to_process in filenames:
             cells = row.findAll('td')
             transaction = ['','','', False]
             for index, table_cell in enumerate(cells):
-                if index == date_column and table_cell.string:
-                    transaction[0] = table_cell.string.strip(' \t')
-                elif index == amount_column and table_cell.string:
-                    transaction[1] = table_cell.string.strip(' \t')
-                elif index == description_column and table_cell.string:
-                    transaction[2] = table_cell.string.strip(' \t')
-            transactions_table.append(transaction)
+                if table_cell.string:
+                    cell_contents = table_cell.string.strip(' \t')
+                    if index == date_column:
+                        try:
+                            transaction[0] = parse(cell_contents, dayfirst = True)
+                        except ValueError:
+                            print('The Cell contents "' + cell_contents + '" could not be parsed as a date')
+                    elif index == amount_column:
+                        transaction[1] = cell_contents
+                    elif index == description_column:
+                        transaction[2] = cell_contents
+            if isinstance(transaction[0], datetime):
+                transactions_table.append(transaction)
 print(transactions_table)
-accounts_transactions[1] = transactions_table
+accounts_transactions[0] = transactions_table
 
 #Import list of Account Names and types from the original GNUCAsh file
 
@@ -102,7 +106,7 @@ output_file = open('FileToImport.qif', 'w')
 for account, category, transactions in zip(accounts_names, accounts_types, accounts_transactions):
     output_file.write(qifAccountHdrTemplate.substitute(account_name=account, account_type= category))
     for transaction in transactions:
-        output_file.write(qifTransactionTemplate.substitute(date=transaction[0], amount= transaction[1], description=transaction[2]))
+        output_file.write(qifTransactionTemplate.substitute(date=transaction[0].strftime("%Y/%m/%d"), amount= transaction[1], description=transaction[2]))
         if transaction[3]:
             if isinstance(transaction[3], str):
                 output_file.write(qifPairedAccountTemplate.substitute(paired_account=transaction[3]))
